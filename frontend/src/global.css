@@ -1,0 +1,145 @@
+/* ---------- Theme tokens ---------- */
+:root{
+  --font-sans: ui-sans-serif, system-ui, Inter, "Segoe UI", Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  --bg: oklch(17% 0.03 260);
+  --bg-grad: radial-gradient(1100px 420px at 50% -220px, oklch(28% 0.05 260), var(--bg));
+  --surface: oklch(22% 0.03 260);
+  --panel: oklch(24% 0.04 260);
+  --card: oklch(26% 0.04 260);
+  --fg: oklch(96% 0.015 260);
+  --muted: oklch(70% 0.03 260);
+  --accent: oklch(64% 0.16 260);
+
+  --radius: 16px;
+  --radius-xl: 20px;
+}
+
+html, body, #root { height: 100%; }
+body{
+  margin: 0;
+  color: var(--fg);
+  background: var(--bg-grad);
+  font-family: var(--font-sans);
+}
+
+/* ---------- Layout ---------- */
+.app{
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+}
+
+.sidebar{
+  background: var(--surface);
+  border-right: 1px solid rgba(255,255,255,.06);
+  padding: 16px;
+}
+.sidebar .logo{ font-size: 20px; font-weight: 600; margin-bottom: 24px; }
+.sidebar nav a{
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 10px;
+  color: inherit; text-decoration: none;
+}
+.sidebar nav a.is-active{ background: rgba(255,255,255,.06); }
+.sidebar nav a:hover{ background: rgba(255,255,255,.06); }
+
+.content{ background: var(--bg); }
+
+.header{
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px;
+  background: color-mix(in oklab, var(--bg) 60%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.mono-dim{ color: rgba(255,255,255,.4); }
+.text-dim{ color: rgba(255,255,255,.7); }
+
+/* ---------- Cards & panels ---------- */
+.card{
+  background: color-mix(in oklab, var(--card) 70%, transparent);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+}
+.panel{
+  background: var(--panel);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+}
+
+/* ---------- Dashboard grids ---------- */
+.main-pad{ padding: 0 24px 40px; }
+.mt-16{ margin-top: 16px; }
+.mb-12{ margin-bottom: 12px; }
+
+.kpi-row{
+  display: grid; gap: 16px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px){ .kpi-row{ grid-template-columns: repeat(2,1fr); } }
+@media (min-width: 1024px){ .kpi-row{ grid-template-columns: repeat(4,1fr); } }
+
+.kpi{
+  display: flex; align-items: center; gap: 12px;
+  height: 80px;
+}
+.icon-box{
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border-radius: 12px; background: rgba(255,255,255,.1);
+}
+
+.grid-main{
+  display: grid; gap: 16px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1024px){ .grid-main{ grid-template-columns: 2fr 1fr; } }
+
+.section-title{
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.hint{ font-size: 12px; color: rgba(255,255,255,.4); }
+
+/* ---------- Inputs / buttons ---------- */
+.input{
+  width: 100%; padding: 10px 12px; border-radius: 10px;
+  background: rgba(255,255,255,.06); border: 0; color: var(--fg);
+}
+.button{
+  width: 100%; padding: 10px 12px; border-radius: 14px;
+  background: var(--accent); border: 0; color: #000; font-weight: 600; cursor: pointer;
+}
+.button.secondary{
+  background: rgba(255,255,255,.1); color: var(--fg);
+}
+.button.secondary:hover{ background: rgba(255,255,255,.15); }
+
+/* ---------- Table ---------- */
+.table{
+  width: 100%; border-collapse: collapse; font-size: 14px;
+  overflow: hidden; border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.table thead{ background: rgba(255,255,255,.06); color: rgba(255,255,255,.7); }
+.table th, .table td{ padding: 10px 16px; text-align: left; }
+.table tr + tr{ border-top: 1px solid rgba(255,255,255,.06); }
+.table tbody tr:nth-child(even){ background: rgba(255,255,255,.05); }
+
+/* ---------- Bits ---------- */
+.badge-dot{ display:inline-block; width:8px; height:8px; border-radius:999px; background:#34d399; }
+.skeleton{ height: 160px; border-radius: 14px; background: rgba(255,255,255,.1); animation: pulse 1.2s infinite ease-in-out; }
+@keyframes pulse{ 0%,100%{ opacity:.6 } 50%{ opacity:1 } }
+
+.right{ text-align: right; }
+
+
+.chart{
+  background: rgba(0,0,0,.08);
+  border-radius: 14px;
+  padding: 12px;
+}
+.chart-legend{
+  display:flex; justify-content: space-between; margin-top: 6px;
+}

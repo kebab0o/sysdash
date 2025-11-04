@@ -21,22 +21,24 @@ func NewServer(h http.Handler) *Server {
 	return &Server{Router: r}
 }
 
-// tiny timeout middleware
 func timeout(d time.Duration) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.TimeoutHandler(next, d, "timeout")
-	}
+	return func(next http.Handler) http.Handler { return http.TimeoutHandler(next, d, "timeout") }
 }
 
-// CORS middleware simple & explicit
 func CORS(next http.Handler) http.Handler {
-	allowed := map[string]bool{
+	origins := map[string]bool{
 		"http://localhost:3000": true,
-		"http://localhost:5173": true, // Vite
+		"http://localhost:5173": true,
+	}
+	// ALLOWED_ORIGINS=http://a.com,http://b.com
+	if extra := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); extra != "" {
+		for _, o := range strings.Split(extra, ",") {
+			origins[strings.TrimSpace(o)] = true
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if allowed[origin] {
+		if origins[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
@@ -50,12 +52,11 @@ func CORS(next http.Handler) http.Handler {
 	})
 }
 
-// single-header token check to look professional
 func Auth(next http.Handler) http.Handler {
 	secret := strings.TrimSpace(os.Getenv("DAEMON_API_KEY"))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if secret == "" {
-			next.ServeHTTP(w, r) // no key set, auth disabled
+			next.ServeHTTP(w, r)
 			return
 		}
 		if r.Header.Get("X-API-Key") != secret {

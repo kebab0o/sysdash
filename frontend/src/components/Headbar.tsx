@@ -1,12 +1,9 @@
-// src/components/HeaderBar.tsx
-export function Headbar() {
+import React from "react";
+
+export default function Headbar() {
   return (
-  <header className="header">
-      <div className="text-dim">
-        <span className="badge-dot" /> <span>Sampling active</span>
-        <span className="mono-dim" style={{ marginLeft: 8 }}>Last updated 12:03:22</span>
-      </div>
-      <div className="badge-dot" />
+    <header className="app-headbar">
+      <h1 className="app-title">SysDash</h1>
     </header>
   );
 }

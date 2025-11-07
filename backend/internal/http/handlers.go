@@ -3,172 +3,228 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/kebab0o/sysdash/backend/internal/store"
+	"github.com/kebab0o/sysdash/backend/internal/types"
 )
 
-type App struct{ Store *store.Memory }
+type App struct {
+	Store *store.Memory
+}
 
 func (a *App) Routes() http.Handler {
 	r := chi.NewRouter()
+	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
 	r.Use(CORS, Auth)
 
-	r.Get("/api/health", a.health)
+	r.Get("/api/health", a.getHealth)
 
-	r.Route("/api/items", func(r chi.Router) {
-		r.Get("/", a.listItems)
-		r.Post("/", a.createItem)
-		r.Route("/{id}", func(r chi.Router) {
-			r.Get("/", a.getItem)
-			r.Put("/", a.updateItem)
-			r.Delete("/", a.deleteItem)
-		})
+	r.Route("/api/metrics", func(r chi.Router) {
+		r.Get("/cpu", a.getCPU)
+		r.Get("/mem", a.getMem)
+		r.Get("/disk", a.getDisk)
+		r.Get("/diskio", a.getDiskIO)
+		r.Get("/net", a.getNet)
 	})
 
-	// metrics
-	r.Get("/api/metrics/cpu", a.cpuMetrics)
-	r.Get("/api/metrics/mem", a.memMetrics)
-	r.Get("/api/metrics/disk", a.diskMetrics)
-	r.Get("/api/metrics/diskio", a.diskIOMetrics)
-	r.Get("/api/metrics/net", a.netMetrics)
+	r.Route("/api/tasks", func(r chi.Router) {
+		r.Get("/", a.listTasks)
+		r.Post("/", a.createTask)
+		r.Post("/{id}/run", a.runTask)
+		r.Delete("/{id}", a.deleteTask)
+	})
 
-	// maintenance
-	r.Post("/api/tasks/prune", a.pruneRetention)
+	r.Get("/api/logs", a.listLogs)
+
 	return r
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func (a *App) getHealth(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{
+		"status":          "ok",
+		"now":             time.Now().UTC(),
+		"lastCollectorAt": a.Store.LastCollector(),
+	}
+	writeJSON(w, out)
+}
+
+func parseRange(r *http.Request, def string) time.Duration {
+	q := r.URL.Query().Get("range")
+	if q == "" {
+		q = def
+	}
+	d, err := time.ParseDuration(q)
+	if err != nil {
+		switch q {
+		case "1h":
+			return time.Hour
+		case "24h":
+			return 24 * time.Hour
+		default:
+			return time.Hour
+		}
+	}
+	return d
+}
+
+func (a *App) getCPU(w http.ResponseWriter, r *http.Request) {
+	d := parseRange(r, "1h")
+	since := time.Now().Add(-d)
+	pts := a.Store.CPUSince(since)
+	avg, p95 := calcAvgP(pts)
+
+	out := struct {
+		Range  string           `json:"range"`
+		Points []types.CPUPoint `json:"points"`
+		Avg    float64          `json:"avg"`
+		P95    float64          `json:"p95"`
+	}{
+		Range:  r.URL.Query().Get("range"),
+		Points: pts,
+		Avg:    avg,
+		P95:    p95,
+	}
+	writeJSON(w, out)
+}
+
+func (a *App) getMem(w http.ResponseWriter, r *http.Request) {
+	d := parseRange(r, "1h")
+	since := time.Now().Add(-d)
+	pts := a.Store.MemSince(since)
+	latest := 0.0
+	if n := len(pts); n > 0 {
+		latest = pts[n-1].V
+	}
+	out := struct {
+		Range  string           `json:"range"`
+		Points []types.MemPoint `json:"points"`
+		Latest float64          `json:"latest"`
+	}{
+		Range:  r.URL.Query().Get("range"),
+		Points: pts,
+		Latest: latest,
+	}
+	writeJSON(w, out)
+}
+
+func (a *App) getDisk(w http.ResponseWriter, r *http.Request) {
+	d := parseRange(r, "24h")
+	since := time.Now().Add(-d)
+	series := a.Store.DiskSince(since)
+	out := struct {
+		Range  string             `json:"range"`
+		Mounts []store.DiskSeries `json:"mounts"`
+	}{
+		Range:  r.URL.Query().Get("range"),
+		Mounts: series,
+	}
+	writeJSON(w, out)
+}
+
+func (a *App) getDiskIO(w http.ResponseWriter, r *http.Request) {
+	d := parseRange(r, "1h")
+	since := time.Now().Add(-d)
+	pts := a.Store.DiskIOSince(since)
+	out := struct {
+		Range  string              `json:"range"`
+		Points []types.DiskIOPoint `json:"points"`
+	}{
+		Range:  r.URL.Query().Get("range"),
+		Points: pts,
+	}
+	writeJSON(w, out)
+}
+
+func (a *App) getNet(w http.ResponseWriter, r *http.Request) {
+	d := parseRange(r, "1h")
+	since := time.Now().Add(-d)
+	pts := a.Store.NetSince(since)
+	out := struct {
+		Range  string           `json:"range"`
+		Points []types.NetPoint `json:"points"`
+	}{
+		Range:  r.URL.Query().Get("range"),
+		Points: pts,
+	}
+	writeJSON(w, out)
+}
+
+func (a *App) listTasks(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, a.Store.ListTasks())
+}
+func (a *App) createTask(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name         string `json:"name"`
+		EveryMinutes int    `json:"everyMinutes"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.Name == "" || body.EveryMinutes <= 0 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	t := a.Store.CreateTask(body.Name, body.EveryMinutes)
+	writeJSON(w, t)
+}
+func (a *App) runTask(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := a.Store.RunTaskNow(id); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+func (a *App) deleteTask(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := a.Store.DeleteTask(id); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) listLogs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, a.Store.ListLogs(300, r.URL.Query().Get("q")))
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func (a *App) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "ok", "now": time.Now().UTC().Format(time.RFC3339Nano),
-		"lastCollectorAt": a.Store.LastCollector().Format(time.RFC3339Nano),
-	})
-}
-
-/* ===== items ===== (unchanged) */
-type createReq struct{ Title, Notes string }
-
-func (a *App) listItems(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, a.Store.List())
-}
-func (a *App) createItem(w http.ResponseWriter, r *http.Request) {
-	var b createReq
-	if json.NewDecoder(r.Body).Decode(&b) != nil {
-		http.Error(w, "bad json", 400)
-		return
-	}
-	writeJSON(w, 201, a.Store.Create(b.Title, b.Notes))
-}
-func (a *App) getItem(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	it, err := a.Store.Get(id)
-	if err != nil {
-		http.Error(w, "not found", 404)
-		return
-	}
-	writeJSON(w, 200, it)
-}
-func (a *App) updateItem(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	var b createReq
-	if json.NewDecoder(r.Body).Decode(&b) != nil {
-		http.Error(w, "bad json", 400)
-		return
-	}
-	it, err := a.Store.Update(id, b.Title, b.Notes)
-	if err != nil {
-		http.Error(w, "not found", 404)
-		return
-	}
-	writeJSON(w, 200, it)
-}
-func (a *App) deleteItem(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if a.Store.Delete(id) != nil {
-		http.Error(w, "not found", 404)
-		return
-	}
-	w.WriteHeader(204)
-}
-
-/* ===== metrics ===== */
-func parseRange(r *http.Request, def time.Duration) time.Duration {
-	q := r.URL.Query().Get("range")
-	if q == "" {
-		return def
-	}
-	if len(q) > 1 && q[len(q)-1] == 'd' {
-		if d, err := strconv.Atoi(q[:len(q)-1]); err == nil {
-			return time.Duration(d) * 24 * time.Hour
-		}
-	}
-	if d, err := time.ParseDuration(q); err == nil {
-		return d
-	}
-	return def
-}
-
-func (a *App) cpuMetrics(w http.ResponseWriter, r *http.Request) {
-	d := parseRange(r, time.Hour)
-	since := time.Now().Add(-d)
-	pts := a.Store.CPUSince(since)
-	var avg, p95 float64
+func calcAvgP(pts []types.CPUPoint) (avg, p95 float64) {
 	n := len(pts)
-	if n > 0 {
-		vals := make([]float64, n)
-		for i, p := range pts {
-			avg += p.Usage
-			vals[i] = p.Usage
-		}
-		avg /= float64(n)
-		// sort vals
-		for i := 0; i < n-1; i++ {
-			for j := i + 1; j < n; j++ {
-				if vals[j] < vals[i] {
-					vals[i], vals[j] = vals[j], vals[i]
-				}
+	if n == 0 {
+		return 0, 0
+	}
+	var sum float64
+	values := make([]float64, n)
+	for i, p := range pts {
+		sum += p.V
+		values[i] = p.V
+	}
+	avg = sum / float64(n)
+	idx := int(0.95 * float64(n-1))
+	for i := 0; i <= idx; i++ {
+		min := i
+		for j := i + 1; j < n; j++ {
+			if values[j] < values[min] {
+				min = j
 			}
 		}
-		p95 = vals[int(float64(n-1)*0.95)]
+		values[i], values[min] = values[min], values[i]
 	}
-	writeJSON(w, 200, map[string]any{"range": d.String(), "points": pts, "avg": avg, "p95": p95})
-}
-func (a *App) memMetrics(w http.ResponseWriter, r *http.Request) {
-	d := parseRange(r, time.Hour)
-	since := time.Now().Add(-d)
-	pts := a.Store.MemSince(since)
-	var latest float64
-	if len(pts) > 0 {
-		latest = pts[len(pts)-1].UsedPct
-	}
-	writeJSON(w, 200, map[string]any{"range": d.String(), "points": pts, "latest": latest})
-}
-func (a *App) diskMetrics(w http.ResponseWriter, r *http.Request) {
-	d := parseRange(r, 24*time.Hour)
-	since := time.Now().Add(-d)
-	writeJSON(w, 200, map[string]any{"range": d.String(), "mounts": a.Store.DiskSince(since)})
-}
-func (a *App) diskIOMetrics(w http.ResponseWriter, r *http.Request) {
-	d := parseRange(r, time.Hour)
-	since := time.Now().Add(-d)
-	writeJSON(w, 200, map[string]any{"range": d.String(), "points": a.Store.DiskIOSince(since)})
-}
-func (a *App) netMetrics(w http.ResponseWriter, r *http.Request) {
-	d := parseRange(r, time.Hour)
-	since := time.Now().Add(-d)
-	writeJSON(w, 200, map[string]any{"range": d.String(), "points": a.Store.NetSince(since)})
-}
-
-/* ===== maintenance ===== */
-func (a *App) pruneRetention(w http.ResponseWriter, r *http.Request) {
-	a.Store.PruneForRetention()
-	writeJSON(w, 200, map[string]string{"status": "pruned"})
+	p95 = values[idx]
+	return
 }

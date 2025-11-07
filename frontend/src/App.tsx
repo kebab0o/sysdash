@@ -1,16 +1,33 @@
 import "./global.css";
-import { Sidebar } from "./components/Sidebar";
-import { Headbar } from "./components/Headbar";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Sidebar from "./components/Sidebar";
+import Headbar from "./components/Headbar";
 import Dashboard from "./pages/Dashboard";
+import CpuMem from "./pages/CpuMem";
+import DiskIO from "./pages/DiskIO";
+import Tasks from "./pages/Tasks";
+import Logs from "./pages/Logs";
 
-export default function App(){
+export default function App() {
   return (
-    <div className="app">
-      <Sidebar />
-      <div className="content">
-        <Headbar />
-        <Dashboard />
+    <BrowserRouter>
+      <div className="app">
+        <aside className="sidebar">
+          <div className="logo">SysDash</div>
+          <Sidebar />
+        </aside>
+        <section className="content">
+          <Headbar />
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/cpu-memory" element={<CpuMem />} />
+            <Route path="/disk-io" element={<DiskIO />} />
+            <Route path="/tasks" element={<Tasks />} />
+            <Route path="/logs" element={<Logs />} />
+          </Routes>
+        </section>
       </div>
-    </div>
+    </BrowserRouter>
   );
 }

@@ -25,8 +25,8 @@ export function Sparkline({
     return <div className={`skeleton ${className}`} style={{ height }} />;
   }
 
-  const w = 600;     // internal viewBox width
-  const h = 120;     // internal viewBox height
+  const w = 600;     
+  const h = 120;     
   const pad = 8;
 
   const min = Math.min(...data);

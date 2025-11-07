@@ -30,7 +30,6 @@ func CORS(next http.Handler) http.Handler {
 		"http://localhost:3000": true,
 		"http://localhost:5173": true,
 	}
-	// ALLOWED_ORIGINS=http://a.com,http://b.com
 	if extra := strings.TrimSpace(os.Getenv("ALLOWED_ORIGINS")); extra != "" {
 		for _, o := range strings.Split(extra, ",") {
 			origins[strings.TrimSpace(o)] = true
